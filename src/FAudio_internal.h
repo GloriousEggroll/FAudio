@@ -27,17 +27,29 @@
 #include "FAudio.h"
 #include "FAPOBase.h"
 
-#ifdef FAUDIO_UNKNOWN_PLATFORM
+#if defined(FAUDIO_UNKNOWN_PLATFORM) || defined(FAUDIO_PLATFORM_WASAPI)
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <assert.h>
 
+#ifdef FAUDIO_PLATFORM_WASAPI
+#include <malloc.h>
+__declspec(dllimport) void * __stdcall CoTaskMemAlloc(size_t cb);
+__declspec(dllimport) void * __stdcall CoTaskMemRealloc(void* pv, size_t cb);
+__declspec(dllimport) void __stdcall CoTaskMemFree(void* pv);
+#define FAudio_malloc CoTaskMemAlloc
+#define FAudio_realloc CoTaskMemRealloc
+#define FAudio_free CoTaskMemFree
+#define FAudio_alloca(x) alloca(x)
+#define FAudio_dealloca(x)
+#else
 #define FAudio_malloc(size) malloc(size)
 #define FAudio_realloc(mem, size) realloc(mem, size)
 #define FAudio_free(mem) free(mem)
-#define FAudio_alloca(x) alloca(uint8_t, x)
+#define FAudio_alloca(x) alloca(x)
 #define FAudio_dealloca(x) dealloca(x)
+#endif
 #define FAudio_zero(ptr, size) memset(ptr, '\0', size)
 #define FAudio_memset(ptr, val, size) memset(ptr, val, size)
 #define FAudio_memcpy(dst, src, size) memcpy(dst, src, size)
@@ -46,7 +58,11 @@
 
 #define FAudio_strlen(ptr) strlen(ptr)
 #define FAudio_strcmp(str1, str2) strcmp(str1, str2)
+#ifdef FAUDIO_PLATFORM_WASAPI
+#define FAudio_strlcpy(ptr1, ptr2, size) strcpy_s(ptr1, size, ptr2)
+#else
 #define FAudio_strlcpy(ptr1, ptr2, size) strlcpy(ptr1, ptr2, size)
+#endif
 
 #define FAudio_pow(x, y) pow(x, y)
 #define FAudio_log(x) log(x)

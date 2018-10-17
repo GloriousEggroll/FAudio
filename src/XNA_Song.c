@@ -28,6 +28,7 @@
 
 /* stb_vorbis */
 
+#ifndef FAUDIO_PLATFORM_WASAPI
 #define malloc FAudio_malloc
 #define realloc FAudio_realloc
 #define free FAudio_free
@@ -47,6 +48,7 @@
 #define qsort FAudio_qsort
 
 #define assert FAudio_assert
+#endif
 
 #define FILE FAudioIOStream
 #ifdef SEEK_SET
