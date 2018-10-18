@@ -510,13 +510,12 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 		return;
 	}
 
-	/* 3 period minimum, for safety */
-	bufDur = FAudio_max(3 * period, 1000000); /* FIXME: Hardcoded size... */
+	/* Initialize... */
 	hr = IAudioClient_Initialize(
 		device->client,
 		AUDCLNT_SHAREMODE_SHARED,
 		AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-		bufDur,
+		period,
 		0,
 		(WAVEFORMATEX*) &device->format.Format,
 		NULL
@@ -528,11 +527,17 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 		FAudio_free(device);
 		return;
 	}
-	device->bufferSize = MulDiv(
-		(int) period,
-		device->format.Format.nSamplesPerSec,
-		10000000 /* FIXME: Hardcoded size... */
-	);
+
+	/* ... now we get the update size. */
+	hr = IAudioClient_GetBufferSize(device->client, &device->bufferSize);
+	if (FAILED(hr))
+	{
+		FAudio_assert(0 && "GetBufferSize failed!");
+		IAudioClient_Release(device->client);
+		FAudio_free(device);
+		return;
+	}
+	device->bufferSize /= 2; /* I know SDL does this, so let's do this too... */
 
 	/* WASAPI event handle */
 	device->deviceEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
