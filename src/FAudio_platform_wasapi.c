@@ -221,9 +221,9 @@ void FAudio_PlatformAddRef()
 			goto end;
 		}
 
-		mmDevIds = (WCHAR**) FAudio_malloc(sizeof(WCHAR*) * mmDevCount);
-		mmDevDetails = (FAudioDeviceDetails*) FAudio_malloc(sizeof(FAudioDeviceDetails) * mmDevCount);
-		FAudio_zero(mmDevDetails, sizeof(FAudioDeviceDetails) * mmDevCount);
+		mmDevIds = (WCHAR**) FAudio_malloc(sizeof(WCHAR*) * (mmDevCount + 1));
+		mmDevDetails = (FAudioDeviceDetails*) FAudio_malloc(sizeof(FAudioDeviceDetails) * (mmDevCount + 1));
+		FAudio_zero(mmDevDetails, sizeof(FAudioDeviceDetails) * (mmDevCount + 1));
 
 		#define DEVICE_FAIL(msg) \
 			if (FAILED(hr)) \
