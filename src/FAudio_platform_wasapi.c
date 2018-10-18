@@ -102,7 +102,6 @@ static DWORD WINAPI FAudio_INTERNAL_MixCallback(void *userdata)
 {
 	FAudioPlatformDevice *device = (FAudioPlatformDevice*) userdata;
 	LinkedList *audio;
-	DWORD rendered = AUDCLNT_BUFFERFLAGS_SILENT;
 	BYTE *buf;
 	HRESULT hr;
 
@@ -121,12 +120,12 @@ static DWORD WINAPI FAudio_INTERNAL_MixCallback(void *userdata)
 			FAudio_assert(0 && "GetBuffer failed");
 			continue;
 		}
+		FAudio_zero(buf, device->bufferSize * sizeof(float));
 
 		FAudio_PlatformLockMutex(device->engineLock);
 		audio = device->engineList;
 		while (audio != NULL)
 		{
-			rendered = 0;
 			FAudio_INTERNAL_UpdateEngine(
 				(FAudio*) audio->entry,
 				(float*) buf
@@ -135,7 +134,7 @@ static DWORD WINAPI FAudio_INTERNAL_MixCallback(void *userdata)
 		}
 		FAudio_PlatformUnlockMutex(device->engineLock);
 
-		IAudioRenderClient_ReleaseBuffer(device->render, device->bufferSize, rendered);
+		IAudioRenderClient_ReleaseBuffer(device->render, device->bufferSize, 0);
 		if (FAILED(hr))
 		{
 			FAudio_assert(0 && "ReleaseBuffer failed");
