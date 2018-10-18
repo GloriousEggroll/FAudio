@@ -32,6 +32,15 @@
 
 #include "FAudio_internal.h"
 
+/* Avoiding some linker mess for now */
+static const CLSID FAudio_CLSID_MMDeviceEnumerator = { 0xbcde0395, 0xe52f, 0x467c,{ 0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e } };
+static const IID FAudio_IID_IMMDeviceEnumerator = { 0xa95664d2, 0x9614, 0x4f35,{ 0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6 } };
+static const IID FAudio_IID_IMMNotificationClient = { 0x7991eec9, 0x7e89, 0x4d85,{ 0x83, 0x90, 0x6c, 0x70, 0x3c, 0xec, 0x60, 0xc0 } };
+static const IID FAudio_IID_IAudioClient = { 0x1cb9ad4c, 0xdbfa, 0x4c32,{ 0xb1, 0x78, 0xc2, 0xf5, 0x68, 0xa7, 0x03, 0xb2 } };
+static const IID FAudio_IID_IAudioRenderClient = { 0xf294acfc, 0x3146, 0x4483,{ 0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2 } };
+static const PROPERTYKEY SDL_PKEY_Device_FriendlyName = { { 0xa45c254e, 0xdf1c, 0x4efd,{ 0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0, } }, 14 };
+static const GUID FAudio_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT = { 0x00000003, 0x0000, 0x0010,{ 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
+
 /* Internal Types */
 
 typedef struct FAudioPlatformDevice
@@ -166,10 +175,10 @@ void FAudio_PlatformAddRef()
 		if (mmDevEnum == NULL)
 		{
 			hr = CoCreateInstance(
-				&CLSID_MMDeviceEnumerator,
+				&FAudio_CLSID_MMDeviceEnumerator,
 				NULL,
 				CLSCTX_INPROC_SERVER,
-				&IID_IMMDeviceEnumerator,
+				&FAudio_IID_IMMDeviceEnumerator,
 				(void**) &mmDevEnum
 			);
 			if (FAILED(hr))
@@ -332,7 +341,7 @@ static inline int format_is_float32(WAVEFORMATEX *fmt)
 {
 	if (fmt->wFormatTag == WAVE_FORMAT_IEEE_FLOAT || (
 		fmt->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
-		IsEqualGUID(&((FAudioWaveFormatExtensible *)fmt)->SubFormat, &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)))
+		IsEqualGUID(&((FAudioWaveFormatExtensible *)fmt)->SubFormat, &FAudio_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)))
 	{
 		return (fmt->wBitsPerSample == 32);
 	}
@@ -400,7 +409,7 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 	/* We're making a new device, activate it! */
 	hr = IMMDevice_Activate(
 		dev,
-		&IID_IAudioClient,
+		&FAudio_IID_IAudioClient,
 		CLSCTX_INPROC_SERVER,
 		NULL,
 		(void**) &device->client
@@ -504,7 +513,7 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 	/* Initialize the render client */
 	hr = IAudioClient_GetService(
 		device->client,
-		&IID_IAudioRenderClient,
+		&FAudio_IID_IAudioRenderClient,
 		(void**) &device->render
 	);
 	if (FAILED(hr))
