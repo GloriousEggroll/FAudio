@@ -573,6 +573,8 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 	audio->master->master.inputSampleRate = device->format.Format.nSamplesPerSec;
 
 	/* Add the engine and device, finally.*/
+	device->engineList = NULL;
+	device->engineLock = FAudio_PlatformCreateMutex();
 	LinkedList_AddEntry(
 		&device->engineList,
 		audio,
