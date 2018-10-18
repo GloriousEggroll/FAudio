@@ -30,6 +30,7 @@
 #define COBJMACROS
 #include <audioclient.h>
 #include <mmdeviceapi.h>
+#include <functiondiscoverykeys_devpkey.h>
 
 /* Internal Types */
 
@@ -80,6 +81,7 @@ static CRITICAL_SECTION platformLock =
 static IMMDeviceEnumerator *mmDevEnum;
 static UINT mmDevCount;
 static WCHAR **mmDevIds;
+static FAudioDeviceDetails *mmDevDetails;
 
 LinkedList *devlist = NULL;
 FAudioMutex devlock = &platformLock;
@@ -143,6 +145,8 @@ void FAudio_PlatformAddRef()
 {
 	IMMDeviceCollection *devCollection;
 	IMMDevice *dev, *defaultDev;
+	IPropertyStore *pProp;
+	PROPVARIANT prop;
 	UINT i, count, idx;
 	HRESULT hr;
 
@@ -165,7 +169,7 @@ void FAudio_PlatformAddRef()
 				NULL,
 				CLSCTX_INPROC_SERVER,
 				&IID_IMMDeviceEnumerator,
-				(void**)&mmDevEnum
+				(void**) &mmDevEnum
 			);
 			if (FAILED(hr))
 			{
@@ -207,18 +211,25 @@ void FAudio_PlatformAddRef()
 		);
 
 		count = 1;
-		mmDevIds = FAudio_malloc(sizeof(WCHAR*) * mmDevCount);
+		mmDevIds = (WCHAR**) FAudio_malloc(sizeof(WCHAR*) * mmDevCount);
+		mmDevDetails = (FAudioDeviceDetails*) FAudio_malloc(sizeof(FAudioDeviceDetails) * mmDevCount);
+		FAudio_zero(mmDevDetails, sizeof(FAudioDeviceDetails) * mmDevCount);
 		for (i = 0; i < mmDevCount; i += 1)
 		{
+			#define DEVICE_FAIL(msg) \
+				if (FAILED(hr)) \
+				{ \
+					FAudio_assert(0 && msg); \
+					FAudio_free(mmDevIds); \
+					FAudio_free(mmDevDetails); \
+					mmDevIds = NULL; \
+					mmDevDetails = NULL; \
+					IMMDeviceCollection_Release(devCollection); \
+					goto end; \
+				}
+
 			hr = IMMDeviceCollection_Item(devCollection, i, &dev);
-			if (FAILED(hr))
-			{
-				FAudio_assert(0 && "Failed to get audio endpoint");
-				FAudio_free(mmDevIds);
-				mmDevIds = NULL;
-				IMMDeviceCollection_Release(devCollection);
-				goto end;
-			}
+			DEVICE_FAIL("Failed to get audio endpoint")
 
 			if (dev == defaultDev)
 			{
@@ -230,14 +241,32 @@ void FAudio_PlatformAddRef()
 			}
 
 			hr = IMMDevice_GetId(dev, &mmDevIds[idx]);
-			if (FAILED(hr))
-			{
-				FAudio_assert(0 && "GetId failed");
-				FAudio_free(mmDevIds);
-				mmDevIds = NULL;
-				IMMDevice_Release(dev);
-				goto end;
-			}
+			DEVICE_FAIL("GetId failed")
+
+			IMMDevice_OpenPropertyStore(dev, STGM_READ, &pProp);
+			DEVICE_FAIL("OpenPropertyStore failed")
+
+			PropVariantInit(&prop);
+			IPropertyStore_GetValue(
+				pProp,
+				&PKEY_Device_FriendlyName,
+				&prop
+			);
+			DEVICE_FAIL("FriendlyName get failed")
+
+			#undef DEVICE_FAIL
+
+			/* FIXME: I have this dumb thing where I use the ID
+			 * as a basic index value, since SDL doesn't have an ID string.
+			 * In a perfect world, mmDevIds could go into Details.DeviceID.
+			 * -flibit
+			 */
+			mmDevDetails[idx].DeviceID[0] = L'0' + idx;
+			lstrcpynW(
+				mmDevDetails[idx].DisplayName,
+				prop.pwszVal,
+				0xFF
+			);
 
 			IMMDevice_Release(dev);
 		}
@@ -565,26 +594,18 @@ void FAudio_PlatformGetDeviceDetails(
 	uint32_t index,
 	FAudioDeviceDetails *details
 ) {
-	const wchar_t *name;
-
-	FAudio_zero(details, sizeof(FAudioDeviceDetails));
 	if (index > FAudio_PlatformGetDeviceCount())
 	{
+		FAudio_zero(details, sizeof(FAudioDeviceDetails));
 		return;
 	}
 
-	details->DeviceID[0] = L'0' + index;
-	if (index == 0)
-	{
-		name = L"Default Device";
-		details->Role = FAudioGlobalDefaultDevice;
-	}
-	else
-	{
-		name = L"TODO: Get Friendly Name!";
-		details->Role = FAudioNotDefaultDevice;
-	}
-	lstrcpyW((wchar_t*) details->DisplayName, name);
+	/* We got details at init, just copy it over */
+	FAudio_memcpy(
+		details,
+		&mmDevDetails[index],
+		sizeof(FAudioDeviceDetails)
+	);
 
 	/* TODO: SDL_GetAudioDeviceSpec! */
 	details->OutputFormat.Format.nSamplesPerSec = 48000;
