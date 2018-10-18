@@ -324,9 +324,6 @@ void FAudio_PlatformRelease()
 	r = InterlockedDecrement(&platformRef);
 	if (r == 0)
 	{
-		FAudio_free(mmDevIds);
-		mmDevIds = NULL;
-
 		for (i = 0; i < mmDevCount; i += 1)
 		{
 			FAudio_free(mmDevIds[i]);
