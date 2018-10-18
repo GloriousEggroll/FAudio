@@ -172,6 +172,16 @@ void FAudio_PlatformAddRef()
 
 	if (mmDevIds == NULL)
 	{
+		hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+		if (hr == RPC_E_CHANGED_MODE)
+		{
+			hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+		}
+		if (FAILED(hr))
+		{
+			return;
+		}
+
 		if (mmDevEnum == NULL)
 		{
 			hr = CoCreateInstance(
@@ -213,6 +223,24 @@ void FAudio_PlatformAddRef()
 			goto end;
 		}
 
+		mmDevIds = (WCHAR**) FAudio_malloc(sizeof(WCHAR*) * mmDevCount);
+		mmDevDetails = (FAudioDeviceDetails*) FAudio_malloc(sizeof(FAudioDeviceDetails) * mmDevCount);
+		FAudio_zero(mmDevDetails, sizeof(FAudioDeviceDetails) * mmDevCount);
+
+		#define DEVICE_FAIL(msg) \
+			if (FAILED(hr)) \
+			{ \
+				FAudio_assert(0 && msg); \
+				FAudio_free(mmDevIds); \
+				FAudio_free(mmDevDetails); \
+				mmDevIds = NULL; \
+				mmDevDetails = NULL; \
+				IMMDeviceCollection_Release(devCollection); \
+				goto end; \
+			}
+
+		/* Init default device first, it's a little weird and needs its own path */
+
 		IMMDeviceEnumerator_GetDefaultAudioEndpoint(
 			mmDevEnum,
 			eRender,
@@ -220,30 +248,41 @@ void FAudio_PlatformAddRef()
 			&defaultDev
 		);
 
+		hr = IMMDevice_GetId(defaultDev, &mmDevIds[0]);
+		DEVICE_FAIL("GetId failed")
+
+		IMMDevice_OpenPropertyStore(defaultDev, STGM_READ, &pProp);
+		DEVICE_FAIL("OpenPropertyStore failed")
+
+		PropVariantInit(&prop);
+		IPropertyStore_GetValue(
+			pProp,
+			&PKEY_Device_FriendlyName,
+			&prop
+		);
+		DEVICE_FAIL("FriendlyName get failed")
+
+		/* FIXME: I have this dumb thing where I use the ID
+		* as a basic index value, since SDL doesn't have an ID string.
+		* In a perfect world, mmDevIds could go into Details.DeviceID.
+		* -flibit
+		*/
+		mmDevDetails[0].DeviceID[0] = L'0';
+		lstrcpynW(
+			mmDevDetails[0].DisplayName,
+			prop.pwszVal,
+			0xFF
+		);
+
 		count = 1;
-		mmDevIds = (WCHAR**) FAudio_malloc(sizeof(WCHAR*) * mmDevCount);
-		mmDevDetails = (FAudioDeviceDetails*) FAudio_malloc(sizeof(FAudioDeviceDetails) * mmDevCount);
-		FAudio_zero(mmDevDetails, sizeof(FAudioDeviceDetails) * mmDevCount);
 		for (i = 0; i < mmDevCount; i += 1)
 		{
-			#define DEVICE_FAIL(msg) \
-				if (FAILED(hr)) \
-				{ \
-					FAudio_assert(0 && msg); \
-					FAudio_free(mmDevIds); \
-					FAudio_free(mmDevDetails); \
-					mmDevIds = NULL; \
-					mmDevDetails = NULL; \
-					IMMDeviceCollection_Release(devCollection); \
-					goto end; \
-				}
-
 			hr = IMMDeviceCollection_Item(devCollection, i, &dev);
 			DEVICE_FAIL("Failed to get audio endpoint")
 
 			if (dev == defaultDev)
 			{
-				idx = 0;
+				FAudio_assert(0 && "Oh hey here's the default?");
 			}
 			else
 			{
@@ -264,8 +303,6 @@ void FAudio_PlatformAddRef()
 			);
 			DEVICE_FAIL("FriendlyName get failed")
 
-			#undef DEVICE_FAIL
-
 			/* FIXME: I have this dumb thing where I use the ID
 			 * as a basic index value, since SDL doesn't have an ID string.
 			 * In a perfect world, mmDevIds could go into Details.DeviceID.
@@ -280,6 +317,7 @@ void FAudio_PlatformAddRef()
 
 			IMMDevice_Release(dev);
 		}
+		#undef DEVICE_FAIL
 	}
 
 end:
@@ -305,6 +343,8 @@ void FAudio_PlatformRelease()
 		FAudio_free(mmDevIds);
 		IMMDeviceEnumerator_Release(mmDevEnum);
 		mmDevEnum = NULL;
+
+		CoUninitialize();
 	}
 
 	FAudio_PlatformUnlockMutex(devlock);
