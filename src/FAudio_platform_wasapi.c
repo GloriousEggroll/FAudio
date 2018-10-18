@@ -175,11 +175,7 @@ void FAudio_PlatformAddRef()
 		hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 		if (hr == RPC_E_CHANGED_MODE)
 		{
-			hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-		}
-		if (FAILED(hr))
-		{
-			return;
+			CoInitializeEx(NULL, COINIT_MULTITHREADED);
 		}
 
 		if (mmDevEnum == NULL)
