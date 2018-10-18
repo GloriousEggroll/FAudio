@@ -330,6 +330,7 @@ void FAudio_PlatformRelease()
 		}
 		FAudio_free(mmDevIds);
 		IMMDeviceEnumerator_Release(mmDevEnum);
+		mmDevIds = NULL;
 		mmDevEnum = NULL;
 
 		CoUninitialize();
