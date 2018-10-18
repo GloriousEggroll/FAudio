@@ -120,7 +120,10 @@ static DWORD WINAPI FAudio_INTERNAL_MixCallback(void *userdata)
 			FAudio_assert(0 && "GetBuffer failed");
 			continue;
 		}
-		FAudio_zero(buf, device->bufferSize * sizeof(float));
+		FAudio_zero(
+			buf,
+			device->bufferSize * device->format.Format.nChannels * sizeof(float)
+		);
 
 		FAudio_PlatformLockMutex(device->engineLock);
 		audio = device->engineList;
