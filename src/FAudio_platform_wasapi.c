@@ -462,11 +462,11 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 	device->format.Format.nBlockAlign = (
 		device->format.Format.nChannels *
 		(device->format.Format.wBitsPerSample / 8)
-		);
+	);
 	device->format.Format.nAvgBytesPerSec = (
 		device->format.Format.nSamplesPerSec *
 		device->format.Format.nBlockAlign
-		);
+	);
 	device->format.Format.cbSize = sizeof(FAudioWaveFormatExtensible) - sizeof(FAudioWaveFormatEx);
 	device->format.dwChannelMask = get_channel_mask(device->format.Format.nChannels);
 
