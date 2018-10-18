@@ -495,7 +495,7 @@ static void FAudio_INTERNAL_MixSource(FAudioSourceVoice *voice)
 			&voice->src.resampleOffset,
 			voice->src.resampleStep,
 			toResample,
-			voice->src.format->nChannels
+			(uint8_t) voice->src.format->nChannels
 		);
 	}
 

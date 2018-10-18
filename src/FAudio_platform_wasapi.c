@@ -25,12 +25,12 @@
  *
  */
 
-#include "FAudio_internal.h"
-
 #define COBJMACROS
 #include <audioclient.h>
 #include <mmdeviceapi.h>
 #include <functiondiscoverykeys_devpkey.h>
+
+#include "FAudio_internal.h"
 
 /* Internal Types */
 
@@ -38,6 +38,7 @@ typedef struct FAudioPlatformDevice
 {
 	const char *name;
 	uint32_t bufferSize;
+	wchar_t *mmDevID;
 	IAudioClient *client;
 	IAudioRenderClient *render;
 	HANDLE deviceEvent;
@@ -300,172 +301,76 @@ void FAudio_PlatformRelease()
 	FAudio_PlatformUnlockMutex(devlock);
 }
 
-#if 0 /* TODO: Platform Init/Quit */
+static inline DWORD get_channel_mask(unsigned int channels)
+{
+	switch (channels)
+	{
+	case 0:
+		return 0;
+	case 1:
+		return KSAUDIO_SPEAKER_MONO;
+	case 2:
+		return KSAUDIO_SPEAKER_STEREO;
+	case 3:
+		return KSAUDIO_SPEAKER_STEREO | SPEAKER_LOW_FREQUENCY;
+	case 4:
+		return KSAUDIO_SPEAKER_QUAD; /* not _SURROUND */
+	case 5:
+		return KSAUDIO_SPEAKER_QUAD | SPEAKER_LOW_FREQUENCY;
+	case 6:
+		return KSAUDIO_SPEAKER_5POINT1; /* not 5POINT1_SURROUND */
+	case 7:
+		return KSAUDIO_SPEAKER_5POINT1 | SPEAKER_BACK_CENTER;
+	case 8:
+		return KSAUDIO_SPEAKER_7POINT1_SURROUND; /* Vista deprecates 7POINT1 */
+	}
+	FAudio_assert(0 && "Unknown speaker configuration!");
+	return 0;
+}
+
+static inline int format_is_float32(WAVEFORMATEX *fmt)
+{
+	if (fmt->wFormatTag == WAVE_FORMAT_IEEE_FLOAT || (
+		fmt->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
+		IsEqualGUID(&((FAudioWaveFormatExtensible *)fmt)->SubFormat, &KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)))
+	{
+		return (fmt->wBitsPerSample == 32);
+	}
+	return 0;
+}
+
 void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 {
-	LinkedList *deviceList;
 	FAudioPlatformDevice *device;
-	SDL_AudioSpec want, have;
-	const char *name;
+	REFERENCE_TIME period, bufDur;
+	LinkedList *deviceList;
+	WAVEFORMATEX *fmt;
+	IMMDevice *dev;
+	HRESULT hr;
 
-	/* Use the device that the engine tells us to use, then check to see if
-	 * another instance has opened the device.
-	 */
-	if (deviceIndex == 0)
+	if (mmDevIds == NULL)
 	{
-		name = NULL;
-		deviceList = devlist;
-		while (deviceList != NULL)
-		{
-			if (((FAudioPlatformDevice*) deviceList->entry)->name == NULL)
-			{
-				break;
-			}
-			deviceList = deviceList->next;
-		}
-	}
-	else
-	{
-		name = SDL_GetAudioDeviceName(deviceIndex - 1, 0);
-		deviceList = devlist;
-		while (deviceList != NULL)
-		{
-			if (FAudio_strcmp(((FAudioPlatformDevice*) deviceList->entry)->name, name) == 0)
-			{
-				break;
-			}
-			deviceList = deviceList->next;
-		}
+		return; /* How did we get here? */
 	}
 
-	/* Create a new device if the requested one is not in use yet */
-	if (deviceList == NULL)
+	hr = IMMDeviceEnumerator_GetDevice(mmDevEnum, mmDevIds[deviceIndex], &dev);
+	if (FAILED(hr))
 	{
-		/* Allocate a new device container*/
-		device = (FAudioPlatformDevice*) FAudio_malloc(
-			sizeof(FAudioPlatformDevice)
-		);
-		device->name = name;
-		device->engineList = NULL;
-		device->engineLock = FAudio_PlatformCreateMutex();
-		LinkedList_AddEntry(
-			&device->engineList,
-			audio,
-			device->engineLock
-		);
-
-		/* Build the device format */
-		want.freq = audio->master->master.inputSampleRate;
-		want.format = AUDIO_F32;
-		want.channels = audio->master->master.inputChannels;
-		want.silence = 0;
-		want.callback = FAudio_INTERNAL_MixCallback;
-		want.userdata = device;
-
-		/* FIXME: SDL's WASAPI implementation does not overwrite the
-		 * samples value when it really REALLY should. WASAPI is
-		 * extremely sensitive and wants the sample period to be a VERY
-		 * VERY EXACT VALUE and if you fail to write the correct length,
-		 * you will get lots and lots of glitches.
-		 * The math on how to get the right value is very unclear, but
-		 * this post seems to have the math that matches my setups best:
-		 * https://github.com/kinetiknz/cubeb/issues/324#issuecomment-345472582
-		 * -flibit
-		 */
-		if (FAudio_strcmp(SDL_GetCurrentAudioDriver(), "wasapi") == 0)
-		{
-			FAudio_assert(want.freq == 48000);
-			want.samples = 528;
-		}
-		else
-		{
-			want.samples = 1024;
-		}
-
-		/* Open the device, finally. */
-		device->device = SDL_OpenAudioDevice(
-			device->name,
-			0,
-			&want,
-			&have,
-			0
-		);
-		if (device->device == 0)
-		{
-			LinkedList_RemoveEntry(
-				&device->engineList,
-				audio,
-				device->engineLock
-			);
-			FAudio_PlatformDestroyMutex(device->engineLock);
-			FAudio_free(device);
-			SDL_Log("%s\n", SDL_GetError());
-			FAudio_assert(0 && "Failed to open audio device!");
-			return;
-		}
-
-		/* Write up the format */
-		device->format.Samples.wValidBitsPerSample = 32;
-		device->format.Format.wBitsPerSample = 32;
-		device->format.Format.wFormatTag = FAUDIO_FORMAT_EXTENSIBLE;
-		device->format.Format.nChannels = have.channels;
-		device->format.Format.nSamplesPerSec = have.freq;
-		device->format.Format.nBlockAlign = (
-			device->format.Format.nChannels *
-			(device->format.Format.wBitsPerSample / 8)
-		);
-		device->format.Format.nAvgBytesPerSec = (
-			device->format.Format.nSamplesPerSec *
-			device->format.Format.nBlockAlign
-		);
-		device->format.Format.cbSize = sizeof(FAudioWaveFormatExtensible) - sizeof(FAudioWaveFormatEx);
-		if (have.channels == 1)
-		{
-			device->format.dwChannelMask = SPEAKER_MONO;
-		}
-		else if (have.channels == 2)
-		{
-			device->format.dwChannelMask = SPEAKER_STEREO;
-		}
-		else if (have.channels == 3)
-		{
-			device->format.dwChannelMask = SPEAKER_2POINT1;
-		}
-		else if (have.channels == 4)
-		{
-			device->format.dwChannelMask = SPEAKER_QUAD;
-		}
-		else if (have.channels == 5)
-		{
-			device->format.dwChannelMask = SPEAKER_4POINT1;
-		}
-		else if (have.channels == 6)
-		{
-			device->format.dwChannelMask = SPEAKER_5POINT1;
-		}
-		else if (have.channels == 8)
-		{
-			device->format.dwChannelMask = SPEAKER_7POINT1;
-		}
-		else
-		{
-			FAudio_assert(0 && "Unrecognized speaker layout!");
-		}
-		FAudio_memcpy(&device->format.SubFormat, &DATAFORMAT_SUBTYPE_IEEE_FLOAT, sizeof(FAudioGUID));
-		device->bufferSize = have.samples;
-
-		/* Give the output format to the engine */
-		audio->updateSize = device->bufferSize;
-		audio->mixFormat = &device->format;
-
-		/* Also give some info to the master voice */
-		audio->master->master.inputChannels = have.channels;
-		audio->master->master.inputSampleRate = have.freq;
-
-		/* Add to the device list */
-		LinkedList_AddEntry(&devlist, device, devlock);
+		FAudio_assert(0 && "GetDevice failed!");
+		return;
 	}
-	else /* Just add us to the existing device */
+
+	/* Add to existing device if it already exists! */
+	deviceList = devlist;
+	while (deviceList != NULL)
+	{
+		if (((FAudioPlatformDevice*) deviceList->entry)->mmDevID == mmDevIds[deviceIndex])
+		{
+			break;
+		}
+		deviceList = deviceList->next;
+	}
+	if (deviceList != NULL)
 	{
 		device = (FAudioPlatformDevice*) deviceList->entry;
 
@@ -484,6 +389,158 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 			audio,
 			device->engineLock
 		);
+		return;
+	}
+
+	/* Store the ID, for supporting multiple engines */
+	device = (FAudioPlatformDevice*) FAudio_malloc(sizeof(FAudioPlatformDevice));
+	FAudio_zero(device, sizeof(FAudioPlatformDevice));
+	device->mmDevID = mmDevIds[deviceIndex];
+
+	/* We're making a new device, activate it! */
+	hr = IMMDevice_Activate(
+		dev,
+		&IID_IAudioClient,
+		CLSCTX_INPROC_SERVER,
+		NULL,
+		(void**) &device->client
+	);
+	IMMDevice_Release(dev);
+	if (FAILED(hr))
+	{
+		FAudio_assert(0 && "ActivateClient failed!");
+		FAudio_free(device);
+		return;
+	}
+
+	/* Write up the format */
+	device->format.Samples.wValidBitsPerSample = 32;
+	device->format.Format.wBitsPerSample = 32;
+	device->format.Format.wFormatTag = FAUDIO_FORMAT_EXTENSIBLE;
+	device->format.Format.nChannels = audio->master->master.inputChannels;
+	device->format.Format.nSamplesPerSec = audio->master->master.inputSampleRate;
+	device->format.Format.nBlockAlign = (
+		device->format.Format.nChannels *
+		(device->format.Format.wBitsPerSample / 8)
+		);
+	device->format.Format.nAvgBytesPerSec = (
+		device->format.Format.nSamplesPerSec *
+		device->format.Format.nBlockAlign
+		);
+	device->format.Format.cbSize = sizeof(FAudioWaveFormatExtensible) - sizeof(FAudioWaveFormatEx);
+	device->format.dwChannelMask = get_channel_mask(device->format.Format.nChannels);
+
+	/* Verify the FAudio format with WASAPI */
+	hr = IAudioClient_IsFormatSupported(
+		device->client,
+		AUDCLNT_SHAREMODE_SHARED,
+		(WAVEFORMATEX*)&device->format.Format,
+		&fmt
+	);
+	if (hr == S_FALSE)
+	{
+		if (!format_is_float32(fmt))
+		{
+			FAudio_assert(0 && "Mix format must be float32!");
+			IAudioClient_Release(device->client);
+			FAudio_free(device);
+			return;
+		}
+		if (sizeof(WAVEFORMATEX) + fmt->cbSize > sizeof(WAVEFORMATEXTENSIBLE))
+		{
+			FAudio_assert("Mix format doesn't fit into WAVEFORMATEXTENSIBLE!");
+			IAudioClient_Release(device->client);
+			FAudio_free(device);
+			return;
+		}
+		FAudio_memcpy(
+			&device->format,
+			fmt,
+			sizeof(WAVEFORMATEX) + fmt->cbSize
+		);
+	}
+
+	/* Get the period size, eventually becomes update size */
+	hr = IAudioClient_GetDevicePeriod(device->client, &period, NULL);
+	if (FAILED(hr))
+	{
+		FAudio_assert(0 && "GetDevicePeriod failed!");
+		IAudioClient_Release(device->client);
+		FAudio_free(device);
+		return;
+	}
+
+	/* 3 period minimum, for safety */
+	bufDur = FAudio_max(3 * period, 1000000); /* FIXME: Hardcoded size... */
+	hr = IAudioClient_Initialize(
+		device->client,
+		AUDCLNT_SHAREMODE_SHARED,
+		AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+		bufDur,
+		0,
+		(WAVEFORMATEX*) &device->format.Format,
+		NULL
+	);
+	if (FAILED(hr))
+	{
+		FAudio_assert(0 && "Initialize failed!");
+		IAudioClient_Release(device->client);
+		FAudio_free(device);
+		return;
+	}
+
+	/* WASAPI event handle */
+	device->deviceEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
+	hr = IAudioClient_SetEventHandle(device->client, device->deviceEvent);
+	if (FAILED(hr))
+	{
+		FAudio_assert(0 && "SetEventHandle failed!");
+		IAudioClient_Release(device->client);
+		CloseHandle(device->deviceEvent);
+		FAudio_free(device);
+		return;
+	}
+
+	/* Initialize the render client */
+	hr = IAudioClient_GetService(
+		device->client,
+		&IID_IAudioRenderClient,
+		(void**) &device->render
+	);
+	if (FAILED(hr))
+	{
+		FAudio_assert(0 && "GetService failed!");
+		IAudioRenderClient_Release(device->render);
+		IAudioClient_Release(device->client);
+		CloseHandle(device->deviceEvent);
+		FAudio_free(device);
+		return;
+	}
+
+	/* Okay, _now_ we assign our properties to the engine */
+	audio->updateSize = MulDiv(
+		(int) period,
+		device->format.Format.nSamplesPerSec,
+		10000000 /* FIXME: Hardcoded size... */
+	);
+	audio->mixFormat = &device->format;
+	audio->master->master.inputChannels = device->format.Format.nChannels;
+	audio->master->master.inputSampleRate = device->format.Format.nSamplesPerSec;
+
+	/* Add the engine and device, finally.*/
+	LinkedList_AddEntry(
+		&device->engineList,
+		audio,
+		device->engineLock
+	);
+	LinkedList_AddEntry(&devlist, device, devlock);
+
+	/* Create the thread, start the renderer! */
+	device->deviceThread = CreateThread(NULL, 0, &FAudio_INTERNAL_MixCallback, device, 0, NULL);
+	hr = IAudioClient_Start(device->client);
+	if (FAILED(hr))
+	{
+		FAudio_assert(0 && "AudioClient Start failed!");
 	}
 }
 
@@ -518,14 +575,20 @@ void FAudio_PlatformQuit(FAudio *audio)
 
 			if (device->engineList == NULL)
 			{
-				SDL_CloseAudioDevice(
-					device->device
-				);
+				device->exitThread = TRUE;
+				SetEvent(device->deviceEvent);
+				WaitForSingleObject(device->deviceThread, INFINITE);
+				CloseHandle(device->deviceThread);
+
 				LinkedList_RemoveEntry(
 					&devlist,
 					device,
 					devlock
 				);
+
+				IAudioRenderClient_Release(device->render);
+				IAudioClient_Release(device->client);
+				CloseHandle(device->deviceEvent);
 				FAudio_PlatformDestroyMutex(device->engineLock);
 				FAudio_free(device);
 			}
@@ -535,7 +598,6 @@ void FAudio_PlatformQuit(FAudio *audio)
 		dev = dev->next;
 	}
 }
-#endif
 
 void FAudio_PlatformStart(FAudio *audio)
 {

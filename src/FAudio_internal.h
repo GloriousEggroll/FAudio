@@ -35,9 +35,11 @@
 
 #ifdef FAUDIO_PLATFORM_WASAPI
 #include <malloc.h>
+#ifndef _COMBASEAPI_H_
 __declspec(dllimport) void * __stdcall CoTaskMemAlloc(size_t cb);
 __declspec(dllimport) void * __stdcall CoTaskMemRealloc(void* pv, size_t cb);
 __declspec(dllimport) void __stdcall CoTaskMemFree(void* pv);
+#endif
 #define FAudio_malloc CoTaskMemAlloc
 #define FAudio_realloc CoTaskMemRealloc
 #define FAudio_free CoTaskMemFree

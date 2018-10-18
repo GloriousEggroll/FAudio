@@ -301,7 +301,7 @@ typedef struct FAudioDebugConfiguration
 #define FAUDIO_LOG_MEMORY		0x0100
 #define FAUDIO_LOG_STREAMING		0x1000
 
-#ifndef _SPEAKER_POSITIONS_
+#if !defined(_SPEAKER_POSITIONS_) && !defined(_KSMEDIA_)
 #define SPEAKER_FRONT_LEFT		0x00000001
 #define SPEAKER_FRONT_RIGHT		0x00000002
 #define SPEAKER_FRONT_CENTER		0x00000004
