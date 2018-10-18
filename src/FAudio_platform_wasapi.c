@@ -382,7 +382,7 @@ static inline int format_is_float32(WAVEFORMATEX *fmt)
 void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 {
 	FAudioPlatformDevice *device;
-	REFERENCE_TIME period, bufDur;
+	REFERENCE_TIME period;
 	LinkedList *deviceList;
 	WAVEFORMATEX *fmt;
 	IMMDevice *dev;
@@ -441,7 +441,7 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 	hr = IMMDevice_Activate(
 		dev,
 		&FAudio_IID_IAudioClient,
-		CLSCTX_INPROC_SERVER,
+		CLSCTX_ALL,
 		NULL,
 		(void**) &device->client
 	);
@@ -474,7 +474,7 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 	hr = IAudioClient_IsFormatSupported(
 		device->client,
 		AUDCLNT_SHAREMODE_SHARED,
-		(WAVEFORMATEX*)&device->format.Format,
+		(WAVEFORMATEX*) &device->format.Format,
 		&fmt
 	);
 	if (hr == S_FALSE)
