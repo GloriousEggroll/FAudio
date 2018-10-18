@@ -102,7 +102,7 @@ static DWORD WINAPI FAudio_INTERNAL_MixCallback(void *userdata)
 {
 	FAudioPlatformDevice *device = (FAudioPlatformDevice*) userdata;
 	LinkedList *audio;
-	UINT32 pad, nframes, offs;
+	DWORD rendered = AUDCLNT_BUFFERFLAGS_SILENT;
 	BYTE *buf;
 	HRESULT hr;
 
@@ -115,17 +115,7 @@ static DWORD WINAPI FAudio_INTERNAL_MixCallback(void *userdata)
 			return 0;
 		}
 
-		hr = IAudioClient_GetCurrentPadding(device->client, &pad);
-		if (FAILED(hr))
-		{
-			FAudio_assert(0 && "GetCurrentPadding failed");
-			continue;
-		}
-
-		nframes = device->bufferSize * 3 - pad;
-		nframes -= nframes & device->bufferSize;
-
-		hr = IAudioRenderClient_GetBuffer(device->render, nframes, &buf);
+		hr = IAudioRenderClient_GetBuffer(device->render, device->bufferSize, &buf);
 		if (FAILED(hr))
 		{
 			FAudio_assert(0 && "GetBuffer failed");
@@ -136,18 +126,21 @@ static DWORD WINAPI FAudio_INTERNAL_MixCallback(void *userdata)
 		audio = device->engineList;
 		while (audio != NULL)
 		{
-			offs = 0;
-			while (offs < nframes)
-			{
-				FAudio_INTERNAL_UpdateEngine(
-					(FAudio*) audio->entry,
-					(float*) (buf + offs * device->format.Format.nBlockAlign)
-				);
-				offs += device->bufferSize;
-			}
+			rendered = 0;
+			FAudio_INTERNAL_UpdateEngine(
+				(FAudio*) audio->entry,
+				(float*) buf
+			);
 			audio = audio->next;
 		}
 		FAudio_PlatformUnlockMutex(device->engineLock);
+
+		IAudioRenderClient_ReleaseBuffer(device->render, device->bufferSize, rendered);
+		if (FAILED(hr))
+		{
+			FAudio_assert(0 && "ReleaseBuffer failed");
+			continue;
+		}
 	}
 }
 
@@ -535,6 +528,11 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 		FAudio_free(device);
 		return;
 	}
+	device->bufferSize = MulDiv(
+		(int) period,
+		device->format.Format.nSamplesPerSec,
+		10000000 /* FIXME: Hardcoded size... */
+	);
 
 	/* WASAPI event handle */
 	device->deviceEvent = CreateEventW(NULL, FALSE, FALSE, NULL);
@@ -565,11 +563,7 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 	}
 
 	/* Okay, _now_ we assign our properties to the engine */
-	audio->updateSize = MulDiv(
-		(int) period,
-		device->format.Format.nSamplesPerSec,
-		10000000 /* FIXME: Hardcoded size... */
-	);
+	audio->updateSize = device->bufferSize;
 	audio->mixFormat = &device->format;
 	audio->master->master.inputChannels = device->format.Format.nChannels;
 	audio->master->master.inputSampleRate = device->format.Format.nSamplesPerSec;
