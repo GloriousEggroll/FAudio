@@ -132,6 +132,7 @@ static DWORD WINAPI FAudio_INTERNAL_MixCallback(void *userdata)
 			continue;
 		}
 
+		FAudio_PlatformLockMutex(device->engineLock);
 		audio = device->engineList;
 		while (audio != NULL)
 		{
@@ -146,6 +147,7 @@ static DWORD WINAPI FAudio_INTERNAL_MixCallback(void *userdata)
 			}
 			audio = audio->next;
 		}
+		FAudio_PlatformUnlockMutex(device->engineLock);
 	}
 }
 
