@@ -137,7 +137,7 @@ static DWORD WINAPI FAudio_INTERNAL_MixCallback(void *userdata)
 		}
 		FAudio_PlatformUnlockMutex(device->engineLock);
 
-		IAudioRenderClient_ReleaseBuffer(device->render, device->bufferSize, 0);
+		hr = IAudioRenderClient_ReleaseBuffer(device->render, device->bufferSize, 0);
 		if (FAILED(hr))
 		{
 			FAudio_assert(0 && "ReleaseBuffer failed");
@@ -169,11 +169,17 @@ void FAudio_PlatformAddRef()
 
 	if (mmDevIds == NULL)
 	{
+		/* We only need this to reference WASAPI ourselves.
+		 * When using XAudio2 (<=2.7) the application will do this for us.
+		 * -flibit
+		 */
+#if !defined(__WINE__) && !defined(FAUDIO_COM_WRAPPER)
 		hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 		if (hr == RPC_E_CHANGED_MODE)
 		{
 			CoInitializeEx(NULL, COINIT_MULTITHREADED);
 		}
+#endif
 
 		if (mmDevEnum == NULL)
 		{
@@ -285,11 +291,11 @@ void FAudio_PlatformAddRef()
 			hr = IMMDevice_GetId(dev, &mmDevIds[idx]);
 			DEVICE_FAIL("GetId failed")
 
-			IMMDevice_OpenPropertyStore(dev, STGM_READ, &pProp);
+			hr = IMMDevice_OpenPropertyStore(dev, STGM_READ, &pProp);
 			DEVICE_FAIL("OpenPropertyStore failed")
 
 			PropVariantInit(&prop);
-			IPropertyStore_GetValue(
+			hr = IPropertyStore_GetValue(
 				pProp,
 				&PKEY_Device_FriendlyName,
 				&prop
@@ -308,7 +314,8 @@ void FAudio_PlatformAddRef()
 				0xFF
 			);
 
-			IMMDevice_Release(dev);
+			hr = IMMDevice_Release(dev);
+			DEVICE_FAIL("Failed to release device")
 		}
 		#undef DEVICE_FAIL
 	}
@@ -321,6 +328,7 @@ void FAudio_PlatformRelease()
 {
 	LONG r;
 	UINT i;
+	HRESULT hr;
 	FAudio_PlatformLockMutex(devlock);
 
 	r = InterlockedDecrement(&platformRef);
@@ -331,11 +339,21 @@ void FAudio_PlatformRelease()
 			FAudio_free(mmDevIds[i]);
 		}
 		FAudio_free(mmDevIds);
-		IMMDeviceEnumerator_Release(mmDevEnum);
+		hr = IMMDeviceEnumerator_Release(mmDevEnum);
+		if (FAILED(hr))
+		{
+			FAudio_assert(0 && "Failed to release mmDevEnum!");
+		}
 		mmDevIds = NULL;
 		mmDevEnum = NULL;
 
+		/* We only need this to reference WASAPI ourselves.
+		 * When using XAudio2 (<=2.7) the application will do this for us.
+		 * -flibit
+		 */
+#if !defined(__WINE__) && !defined(FAUDIO_COM_WRAPPER)
 		CoUninitialize();
+#endif
 	}
 
 	FAudio_PlatformUnlockMutex(devlock);
