@@ -1061,7 +1061,7 @@ uint8_t* FAudio_memptr(FAudioIOStream *io, size_t offset)
 {
 	FAudioWin32RWops *rwops = (FAudioWin32RWops*) io->data;
 	FAudio_assert(rwops->type == FAUDIO_WIN32_IO_MEMORY);
-	return rwops->mem.cur;
+	return rwops->mem.base + offset;
 }
 
 void FAudio_close(FAudioIOStream *io)
