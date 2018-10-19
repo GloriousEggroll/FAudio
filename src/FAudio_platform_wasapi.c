@@ -719,8 +719,6 @@ uint32_t FAudio_PlatformGetDeviceCount()
 	return mmDevCount;
 }
 
-void FAudio_UTF8_To_UTF16(const char *src, uint16_t *dst, size_t len);
-
 void FAudio_PlatformGetDeviceDetails(
 	uint32_t index,
 	FAudioDeviceDetails *details
