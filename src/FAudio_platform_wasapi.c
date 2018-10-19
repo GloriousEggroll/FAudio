@@ -25,6 +25,8 @@
  *
  */
 
+#ifdef FAUDIO_PLATFORM_WASAPI
+
 #define COBJMACROS
 #include <audioclient.h>
 #include <mmdeviceapi.h>
@@ -487,6 +489,7 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 	);
 	device->format.Format.cbSize = sizeof(FAudioWaveFormatExtensible) - sizeof(FAudioWaveFormatEx);
 	device->format.dwChannelMask = get_channel_mask(device->format.Format.nChannels);
+	FAudio_memcpy(&device->format.SubFormat, &DATAFORMAT_SUBTYPE_IEEE_FLOAT, sizeof(FAudioGUID));
 
 	/* Verify the FAudio format with WASAPI */
 	hr = IAudioClient_IsFormatSupported(
@@ -519,7 +522,7 @@ void FAudio_PlatformInit(FAudio *audio, uint32_t deviceIndex)
 	}
 
 	/* Get the period size, eventually becomes update size */
-	hr = IAudioClient_GetDevicePeriod(device->client, &period, NULL);
+	hr = IAudioClient_GetDevicePeriod(device->client, NULL, &period);
 	if (FAILED(hr))
 	{
 		FAudio_assert(0 && "GetDevicePeriod failed!");
@@ -1066,3 +1069,5 @@ void FAudio_close(FAudioIOStream *io)
 	io->close(io->data);
 	FAudio_free(io);
 }
+
+#endif /* FAUDIO_PLATFORM_WASAPI */
