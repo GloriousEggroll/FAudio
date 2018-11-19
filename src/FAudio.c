@@ -25,6 +25,7 @@
  */
 
 #include "FAudio_internal.h"
+#include <inttypes.h>
 
 #define MAKE_SUBFORMAT_GUID(guid, fmt) \
 	FAudioGUID DATAFORMAT_SUBTYPE_##guid = \
@@ -1746,6 +1747,10 @@ void FAudioSourceVoice_GetState(
 			entry = entry->next;
 		} while (entry != NULL);
 	}
+
+	FAudio_debug(	"-> {pCurrentBufferContext: %p, BuffersQueued: %u, SamplesPlayed: %"PRIu64"}\n",
+			pVoiceState->pCurrentBufferContext, pVoiceState->BuffersQueued,
+			pVoiceState->SamplesPlayed	);
 
 	FAudio_PlatformUnlockMutex(voice->src.bufferLock);
 }
