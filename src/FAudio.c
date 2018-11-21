@@ -1747,7 +1747,7 @@ void FAudioSourceVoice_GetState(
 		} while (entry != NULL);
 	}
 
-	FAudio_debug(	"-> {pCurrentBufferContext: %p, BuffersQueued: %u, SamplesPlayed: %"SDL_PRIu64"}\n",
+	FAudio_debug(	"-> {pCurrentBufferContext: %p, BuffersQueued: %u, SamplesPlayed: %"FAudio_PRIu64"}\n",
 			pVoiceState->pCurrentBufferContext, pVoiceState->BuffersQueued,
 			pVoiceState->SamplesPlayed	);
 
