@@ -34,6 +34,7 @@
 #include <string.h>
 #include <math.h>
 #include <assert.h>
+#include <inttypes.h>
 
 #define FAudio_malloc malloc
 #define FAudio_realloc realloc
@@ -75,6 +76,7 @@
 
 #define FAudio_assert assert
 #define FAudio_LogV(x, va) vfprintf(stderr, x, va)
+#define FAudio_PRIu64 PRIu64
 #else
 #include <SDL_stdinc.h>
 #include <SDL_assert.h>
@@ -120,6 +122,7 @@
 
 #define FAudio_assert SDL_assert
 #define FAudio_LogV(x, va) SDL_LogMessageV(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO, x, va)
+#define FAudio_PRIu64 SDL_PRIu64
 #endif
 
 /* Easy Macros */
