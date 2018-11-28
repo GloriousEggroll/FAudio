@@ -799,6 +799,11 @@ static void FAudio_INTERNAL_MixSubmix(FAudioSubmixVoice *voice)
 	uint32_t resampled;
 	float *effectOut;
 
+	FAudio_zero(
+		voice->mix.inputCache,
+		sizeof(float) * voice->mix.inputSamples
+	);
+
 	FAudio_PlatformLockMutex(voice->sendLock);
 
 	/* Nothing to do? */
